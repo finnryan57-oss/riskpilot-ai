@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 
-import google.generativeai as genai
+import requests
 import streamlit as st
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -27,13 +27,24 @@ if "last_report" not in st.session_state:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def get_gemini_model():
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-1.5-flash:generateContent"
+)
+
+
+def call_gemini(prompt: str) -> str:
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
         st.error("Gemini API key not configured. See README for setup instructions.")
         st.stop()
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-1.5-flash")
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096},
+    }
+    resp = requests.post(GEMINI_URL, params={"key": api_key}, json=payload, timeout=60)
+    resp.raise_for_status()
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def check_premium_code(code: str) -> bool:
@@ -72,12 +83,12 @@ Owner's Concerns:    {d["concerns"]}
 Return ONLY valid JSON in exactly this structure (no markdown, no commentary):
 
 {{
-  "risk_score": <integer 1–100, higher = more risk>,
+  "risk_score": <integer 1-100, higher = more risk>,
   "risk_rating": "<LOW | MODERATE | HIGH | CRITICAL>",
-  "executive_summary": "<2–3 sentence plain-English summary of overall risk posture>",
+  "executive_summary": "<2-3 sentence plain-English summary of overall risk posture>",
   "top_risks": [
     {{
-      "rank": <1–10>,
+      "rank": <1-10>,
       "category": "<e.g. Financial, Operational, Legal, Reputational, Market>",
       "risk": "<Short risk name>",
       "description": "<Why this risk applies specifically to this business>",
@@ -97,18 +108,17 @@ Return ONLY valid JSON in exactly this structure (no markdown, no commentary):
 }}
 
 Rules:
-- top_risks must contain exactly 10 items ranked highest → lowest priority.
-- policy_gaps must contain 4–6 items.
-- quick_wins must contain 3–5 items.
+- top_risks must contain exactly 10 items ranked highest to lowest priority.
+- policy_gaps must contain 4-6 items.
+- quick_wins must contain 3-5 items.
 - Every field is required. No nulls.
 """
 
 
 def generate_risk_assessment(business_data: dict) -> dict:
-    model = get_gemini_model()
     prompt = build_prompt(business_data)
-    response = model.generate_content(prompt)
-    return extract_json(response.text)
+    text = call_gemini(prompt)
+    return extract_json(text)
 
 
 # ── Report rendering ───────────────────────────────────────────────────────────
@@ -141,12 +151,6 @@ def render_report(data: dict, report: dict):
     # Top 10 risks
     st.markdown("### 🔍 Top 10 Business Risks")
     for risk in report["top_risks"]:
-        imp_icon = IMPACT_ICON.get(risk["impact"], "⚪")
-        header = (
-            f"**#{risk['rank']} — {risk['risk']}** "
-            f"&nbsp;|&nbsp; Impact: {imp_icon} {risk['impact']} "
-            f"&nbsp;|&nbsp; Likelihood: {risk['likelihood']}"
-        )
         with st.expander(f"#{risk['rank']} — {risk['risk']}  |  Impact: {risk['impact']}  |  Likelihood: {risk['likelihood']}"):
             st.markdown(f"**Category:** `{risk['category']}`")
             st.markdown(f"**Description:** {risk['description']}")
@@ -291,7 +295,6 @@ if not st.session_state.is_premium and st.session_state.uses >= FREE_TIER_LIMIT:
     st.markdown(
         "### [→ Upgrade to Premium ($19/month)](https://riskpilot.gumroad.com)"
     )
-    # Still show the last report if available
     if st.session_state.last_report:
         st.markdown("---")
         st.markdown("*Your last report is shown below.*")
@@ -332,14 +335,14 @@ with st.form("risk_form", clear_on_submit=False):
             [
                 "Idea / Pre-revenue",
                 "Early Stage (< 6 months old)",
-                "Growing ($1k–$10k/month revenue)",
-                "Scaling ($10k–$100k/month revenue)",
+                "Growing ($1k-$10k/month revenue)",
+                "Scaling ($10k-$100k/month revenue)",
                 "Established ($100k+/month revenue)",
             ],
         )
         employees = st.selectbox(
             "Team size",
-            ["Solo founder", "2–5 people", "6–15 people", "16–50 people", "50+"],
+            ["Solo founder", "2-5 people", "6-15 people", "16-50 people", "50+"],
         )
 
     with col2:
@@ -402,7 +405,7 @@ if submitted:
             "concerns": concerns.strip(),
         }
 
-        with st.spinner("Analysing your business risk profile… (15–30 seconds)"):
+        with st.spinner("Analysing your business risk profile... (15-30 seconds)"):
             try:
                 report = generate_risk_assessment(business_data)
                 st.session_state.uses += 1
