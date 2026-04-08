@@ -416,8 +416,12 @@ if submitted:
                     "The AI returned a malformed response. Please try again — "
                     "this is usually a one-off Gemini quirk."
                 )
-            except Exception as exc:
-                st.error(f"Something went wrong: {exc}. Please try again.")
+                        except Exception as exc:
+                err_msg = str(exc)
+                api_key = st.secrets.get("GEMINI_API_KEY", "")
+                if api_key:
+                    err_msg = err_msg.replace(api_key, "***")
+                st.error(f"Something went wrong: {err_msg}. Please try again.")
 
 elif st.session_state.last_report:
     render_report(*st.session_state.last_report)
