@@ -1,0 +1,11 @@
+[theme]
+primaryColor        = "#2563EB"       # Blue — trust, finance
+backgroundColor     = "#0F172A"       # Dark navy
+secondaryBackgroundColor = "#1E293B"  # Slightly lighter for cards/sidebar
+textColor           = "#F1F5F9"       # Off-white
+font                = "sans serif"
+
+[server]
+headless            = true
+enableCORS          = false
+enableXsrfProtection = true
